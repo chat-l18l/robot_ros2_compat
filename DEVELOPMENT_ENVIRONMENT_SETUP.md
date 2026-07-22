@@ -1,5 +1,12 @@
 # Ontwikkelomgeving voor ROS 2, Zenoh en ESP32-P4
 
+> **Update:** de repository gebruikt voortaan Pixi met het RoboStack Jazzy-kanaal
+> als primaire ontwikkelomgeving. De onderstaande native `apt`-procedure blijft
+> voorlopig alleen als referentie voor een toekomstige robot-runtime. Zie
+> [`pixi.toml`](pixi.toml) en de quickstart in [`README.md`](README.md).
+> Daar staan ook de geverifieerde `pixi install`, diagnose-, build- en
+> talker/listener-smoketestcommando's en het beleid voor post-linkscripts.
+
 > Status: vastgesteld uitgangspunt voor de eerste implementatie  
 > Host: Ubuntu 24.04 LTS, x86-64  
 > ROS 2: Jazzy Jalisco  

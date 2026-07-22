@@ -1,0 +1,39 @@
+[workspace]
+name = "robot-ros2-compat"
+description = "Reproducible ROS 2 Jazzy development environment"
+channels = [
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+platforms = ["linux-64"]
+
+[dependencies]
+ros-jazzy-ros-base = "*"
+ros-jazzy-rmw-cyclonedds-cpp = "*"
+ros-jazzy-demo-nodes-cpp = "*"
+ros-jazzy-demo-nodes-py = "*"
+ros-jazzy-geometry-msgs = "*"
+ros-jazzy-nav-msgs = "*"
+ros-jazzy-std-msgs = "*"
+ros-jazzy-tf2-msgs = "*"
+colcon-common-extensions = "*"
+cmake = "*"
+ninja = "*"
+c-compiler = "*"
+cxx-compiler = "*"
+pkg-config = "*"
+python = "3.12.*"
+pytest = "*"
+
+[activation.env]
+ROS_DISTRO = "jazzy"
+RMW_IMPLEMENTATION = "rmw_cyclonedds_cpp"
+
+[tasks]
+ros-info = "ros2 doctor --report"
+build = "colcon --log-base ros2_ws/log build --base-paths ros2_ws/src --build-base ros2_ws/build --install-base ros2_ws/install --symlink-install --event-handlers console_direct+"
+test = { cmd = "colcon --log-base ros2_ws/log test --build-base ros2_ws/build --install-base ros2_ws/install --event-handlers console_direct+", depends-on = ["build"] }
+test-result = { cmd = "colcon test-result --test-result-base ros2_ws/build --verbose", depends-on = ["test"] }
+list-packages = "colcon list --base-paths ros2_ws/src"
+talker = "ros2 run demo_nodes_cpp talker"
+listener = "ros2 run demo_nodes_py listener"
