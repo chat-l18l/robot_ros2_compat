@@ -109,6 +109,8 @@ pixi run ros-info       # ROS-installatie en configuratie tonen
 pixi run list-packages  # packages onder ros2_ws/src tonen
 pixi run build          # ROS-workspace bouwen
 pixi run test-result    # bouwen, testen en resultaten tonen
+pixi run format-check   # C++-opmaak controleren
+pixi run format         # C++-opmaak automatisch toepassen
 ```
 
 Voor de geverifieerde ROS 2-smoketest start je de talker en listener gelijktijdig
@@ -155,6 +157,7 @@ De gateway verwerkt uitsluitend vooraf vastgelegde, whitelisted routes. De realt
 De belangrijkste plannen zijn:
 
 - [`DEVELOPMENT_ENVIRONMENT_SETUP.md`](DEVELOPMENT_ENVIRONMENT_SETUP.md) — installatie en rationale voor de ontwikkel-pc;
+- [`CPP_STYLE_GUIDE.md`](CPP_STYLE_GUIDE.md) — afspraken over leesbaarheid, ownership, contracten en abstracties;
 - [`ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md`](ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md) — gatewayarchitectuur, protocol en eerste end-to-endtest;
 - [`MOTION_CORE_IMPLEMENTATION_PLAN.md`](MOTION_CORE_IMPLEMENTATION_PLAN.md) — gefaseerde implementatie van motion, safety en odometrie;
 - [`CLEARPATH_ROS2_COMPATIBILITY_TODO.md`](CLEARPATH_ROS2_COMPATIBILITY_TODO.md) — compatibiliteitsbacklog voor Jackal/Husky ROS 2-interfaces.
