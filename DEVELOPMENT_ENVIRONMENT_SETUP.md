@@ -1,597 +1,315 @@
-# Ontwikkelomgeving voor ROS 2, Zenoh en ESP32-P4
+# Ontwikkel- en runtimeomgeving voor ROS 2, Pixi en ESP32-P4
 
-> **Update:** de repository gebruikt voortaan Pixi met het RoboStack Jazzy-kanaal
-> als primaire ontwikkelomgeving. De onderstaande native `apt`-procedure blijft
-> voorlopig alleen als referentie voor een toekomstige robot-runtime. Zie
-> [`pixi.toml`](pixi.toml) en de quickstart in [`README.md`](README.md).
-> Daar staan ook de geverifieerde `pixi install`, diagnose-, build- en
-> talker/listener-smoketestcommando's en het beleid voor post-linkscripts.
-
-> Status: vastgesteld uitgangspunt voor de eerste implementatie  
-> Host: Ubuntu 24.04 LTS, x86-64  
-> ROS 2: Jazzy Jalisco  
-> Embedded target: ESP32-P4, PlatformIO/ESP-IDF, FreeRTOS en Zenoh-Pico  
-> Linux-talen: C++17 en Python 3  
+> Status: vastgesteld voor ontwikkeling; voorwaardelijk voor de robot-runtime
+> ROS 2: Jazzy Jalisco via RoboStack
+> Ontwikkel-pc: Ubuntu 24.04, x86-64 (linux-64)
+> Beoogde robotcomputer: NVIDIA Jetson AGX Orin, ARM64 (linux-aarch64)
+> Embedded target: ESP32-P4, ESP-IDF/FreeRTOS en Zenoh-Pico
 > Bijgewerkt: 2026-07-22
 
-## 1. Doel van dit document
+## 1. Kort antwoord
 
-Dit document legt vast wat op de Linux-werk-pc moet worden geïnstalleerd om de ROS 2 ↔ Zenoh-gateway en de bijbehorende tests te ontwikkelen. Het beschrijft niet alleen de commando's, maar ook waarom voor deze inrichting is gekozen.
+Voor ontwikkeling gebruiken we **Pixi als ROS 2-underlay** en
+**ros2_ws/install als project-overlay**. Een ROS-installatie in
+/opt/ros/jazzy is daarbij niet nodig en mag niet in dezelfde shell worden
+geactiveerd.
 
-De beoogde ontwikkel-pc wordt al gebruikt voor:
+Voor de NVIDIA Jetson AGX Orin heeft dezelfde Pixi-omgeving onze voorkeur, mits
+zij de hardware-acceptatietest uit dit document doorstaat. Pixi ondersteunt
+linux-aarch64 en de huidige RoboStack Jazzy-dependencies zijn voor die
+architectuur succesvol in pixi.lock opgelost. Dat maakt een Pixi-runtime
+realistisch, maar bewijst nog niet dat JetPack, CUDA/TensorRT, device access,
+CycloneDDS en systemd op de echte robot correct samenwerken.
 
-- normale C- en C++-ontwikkeling;
-- Python 3;
-- ImGui-toepassingen;
-- PlatformIO en ESP32-P4-firmwareontwikkeling.
+De keuze is daarom:
 
-ROS 2 kan hier gewoon naast bestaan. Er is geen afzonderlijke computer, virtuele machine, realtimekernel of nieuwe Ubuntu-installatie nodig.
+1. ontwikkeling op de werk-pc: Pixi;
+2. eerste runtimeproef op AGX Orin: eveneens Pixi;
+3. Pixi op de robot behouden als alle acceptatietests slagen;
+4. pas bij een aantoonbare incompatibiliteit een native installatie of container
+   als fallback ontwerpen.
 
-De architectuur waarop deze setup aansluit staat in:
+## 2. Het mentale model: host, underlay en overlay
 
-- [`ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md`](ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md);
-- [`MOTION_CORE_IMPLEMENTATION_PLAN.md`](MOTION_CORE_IMPLEMENTATION_PLAN.md).
+De termen underlay en overlay blijven relevant. Alleen de locatie van de
+underlay is veranderd.
 
-## 2. Samenvatting van de keuze
+| Laag | Locatie/bron | Bevat | Beheer |
+|---|---|---|---|
+| Host | Ubuntu/Jetson Linux | kernel, netwerk, gebruikers, devices en NVIDIA-drivers | apt/JetPack |
+| ROS 2-underlay | .pixi/envs/default | ROS 2 Jazzy, CycloneDDS, berichten, colcon, compilers en Python | Pixi en pixi.lock |
+| Project-overlay | ros2_ws/install | onze gateway en andere eigen ROS-packages | colcon via Pixi |
+| Embedded firmware | firmware/esp32p4 | ESP32-P4 motion core en Zenoh-Pico | PlatformIO/ESP-IDF |
 
-We gebruiken:
+In schema:
 
-1. Ubuntu 24.04 als normale ontwikkelomgeving;
-2. ROS 2 Jazzy uit officiële Debian-pakketten in `/opt/ros/jazzy`;
-3. een gewone `colcon`-workspace binnen deze Git-repository;
-4. de standaard ROS 2-middleware voor de ROS-zijde van de eerste gateway;
-5. een afzonderlijke Zenoh C/C++-client in de gateway;
-6. `zenohd` als lokale router tijdens ontwikkeling;
-7. PlatformIO/ESP-IDF afzonderlijk voor de ESP32-P4;
-8. vastgezette, onderling geteste Zenoh-versies zodra de gebruikte Zenoh-Pico-versie bekend is.
+~~~text
+Ubuntu of Jetson Linux
+└── Pixi-omgeving                         ROS 2-underlay
+    └── ros2_ws/install                   project-overlay
+        └── ros2_zenoh_gateway            eigen package
 
-De dataweg wordt daarmee:
+ESP32-P4-firmware                         afzonderlijke toolchain/runtime
+~~~
 
-```text
-ROS 2-node
-    -> rclcpp gateway
-    -> Zenoh C/C++ API
-    -> zenohd
-    -> Ethernet
-    -> ESP32-P4 met Zenoh-Pico
-```
+De host blijft verantwoordelijk voor zaken die een geïsoleerde packageomgeving
+niet kan leveren: de Linux-kernel, Ethernetinterfaces, USB/CAN/GPIO-devices,
+NVIDIA-kerneldrivers en de bij JetPack horende CUDA/TensorRT-installatie.
 
-## 3. Waarom deze inrichting
+### Wat is niet meer van toepassing?
 
-### 3.1 Native Ubuntu in plaats van een VM
+Voor de normale ontwikkelworkflow doen we niet meer:
 
-Ubuntu 24.04 is een officieel ondersteund platform voor ROS 2 Jazzy. Native installeren geeft eenvoudige toegang tot Ethernet, debuggers, tijdmetingen en hardware zonder USB- of netwerkdoorvoer door een VM.
+~~~bash
+sudo apt install ros-jazzy-desktop
+source /opt/ros/jazzy/setup.bash
+~~~
 
-Een VM zou voor dit project vooral extra netwerkconfiguratie en timingvariatie toevoegen. Docker kan later nuttig zijn voor CI, maar is niet de primaire interactieve ontwikkelomgeving.
+Die commando's horen bij een native ROS-installatie en niet bij onze Pixi-setup.
+Het mengen van /opt/ros/jazzy met RoboStack in één shell kan verkeerde libraries,
+Python-modules en CMake-packages selecteren.
 
-### 3.2 Systeem-underlay plus project-overlay
+## 3. Waarom Pixi voor dit project
 
-De officiële ROS-installatie komt in:
+De volledige omgeving staat in:
 
-```text
-/opt/ros/jazzy
-```
+- pixi.toml: gewenste platforms, dependencies, middleware en taken;
+- pixi.lock: exact opgeloste packages voor x86-64 en ARM64;
+- .pixi/: lokale, gegenereerde omgeving; deze staat niet in Git.
 
-Dit is de **underlay**: een stabiele basis met ROS 2, standaardberichten en ontwikkelgereedschappen.
+Dit geeft de werk-pc en mogelijk ook de robotcomputer dezelfde ROS-versies en
+buildtools. Een update is een zichtbare wijziging aan het manifest en de lockfile,
+niet een stil verschil tussen twee handmatig ingerichte machines.
 
-De eigen packages worden gebouwd in:
+We gebruiken voorlopig gewone colcon-packages. Pixi levert de underlay en voert
+colcon uit; pixi-build-ros is niet nodig voor de eerste implementatie.
 
-```text
-robot_ros2_compat/ros2_ws
-```
+## 4. Installatie en dagelijks gebruik
 
-Dit is de **overlay**. Eigen broncode blijft zo onderdeel van het gewone Git-project en wordt niet in `/opt/ros` of `/usr/local` geplaatst.
+Controleer het platform en voorkom een gemengde Conda-omgeving:
 
-Voordelen:
-
-- systeemsoftware en projectcode blijven gescheiden;
-- de ROS-installatie kan via `apt` worden bijgewerkt;
-- `build/`, `install/` en `log/` zijn reproduceerbare buildproducten;
-- meerdere workspaces kunnen dezelfde underlay gebruiken;
-- PlatformIO en gewone CMake-projecten blijven onafhankelijk.
-
-### 3.3 ROS 2 Jazzy, niet bouwen vanuit broncode
-
-Voor Ubuntu 24.04 is Jazzy de logische lang ondersteunde ROS 2-distributie. Officiële pakketten zijn eenvoudiger te installeren, bij te werken en opnieuw op te bouwen dan een volledige ROS 2-broncode-installatie.
-
-ROS 2 vanuit bron bouwen is pas gerechtvaardigd als een benodigde patch of niet-gepubliceerde functie dat werkelijk vereist.
-
-### 3.4 Desktopinstallatie op de werk-pc
-
-We installeren `ros-jazzy-desktop`, niet alleen `ros-base`.
-
-De gateway zelf heeft geen grafische desktopcomponenten nodig, maar een ontwikkel-pc profiteert van RViz2, demo-nodes en inspectietools. Op de uiteindelijke robotcomputer kan later een kleinere runtime-installatie worden gekozen.
-
-### 3.5 Geen `rmw_zenoh` als primaire gatewayroute
-
-ROS 2 kan Zenoh als RMW gebruiken, maar onze ESP32-P4 met Zenoh-Pico is daarmee niet automatisch een ROS 2-node. Directe interoperabiliteit vraagt ook ROS-specifieke key expressions, serialisatie, type-informatie en discoveryafspraken.
-
-De eerste gateway gebruikt daarom:
-
-- aan de ROS-zijde: normale `rclcpp` publishers en subscriptions;
-- aan de embedded zijde: de gewone Zenoh C/C++ API en eigen vaste wire-messages.
-
-`rmw_zenoh` kan later als meetbare vergelijking worden geïnstalleerd. Het is geen vereiste om de eerste end-to-end GPIO-test te bouwen.
-
-### 3.6 Geen globale Zenoh development-library voordat versies bekend zijn
-
-`zenohd` mag meteen als tool worden geïnstalleerd. De Zenoh C/C++ development-library wordt echter nog niet handmatig in `/usr/local` geïnstalleerd.
-
-Eerst moet worden vastgesteld welke Zenoh-Pico-versie de bestaande ESP32-P4-firmware gebruikt. Daarna leggen we een compatibele set vast voor:
-
-- Zenoh-Pico op de ESP32-P4;
-- Zenoh C op Linux;
-- de Zenoh C++ headers;
-- `zenohd`;
-- protocol- en integratietests.
-
-Hiermee voorkomen we dat een toevallige nieuwste systeembibliotheek afwijkt van de embedded client. De gekozen versies moeten in de repository en CI zichtbaar worden vastgezet.
-
-### 3.7 Geen realtime Linux-kernel in de eerste fase
-
-De harde regelkring blijft op de ESP32-P4:
-
-```text
-encoder -> snelheidsregelaar -> motoroutput
-```
-
-Linux en ROS 2 leveren setpoints en ontvangen status. De ESP32 bewaakt zelfstandig timeouts, e-stop en faults. Daardoor is een normale Ubuntu 24.04-kernel geschikt voor de gatewayontwikkeling.
-
-Een realtimekernel, CPU-affinity of realtime-executor wordt alleen toegevoegd nadat latency- en jittermetingen een concreet probleem aantonen.
-
-## 4. Vooraf controleren
-
-Controleer platform en architectuur:
-
-```bash
-lsb_release -a
+~~~bash
 uname -m
-```
-
-Verwacht minimaal:
-
-```text
-Ubuntu 24.04
-x86_64
-```
-
-Controleer of al een ROS-omgeving actief is:
-
-```bash
+conda deactivate 2>/dev/null || true
 printenv ROS_DISTRO
-command -v ros2
-```
+~~~
 
-Een lege uitvoer is goed op een nog niet ingerichte pc. Als hier een andere ROS-distributie verschijnt, open dan een schone terminal voordat Jazzy wordt geïnstalleerd of gebouwd.
+uname -m hoort op de werk-pc x86_64 te tonen en op de AGX Orin aarch64. Een
+vooraf ingestelde ROS_DISTRO hoort leeg te zijn voordat Pixi wordt gestart.
 
-Installeer niet meerdere ROS-distributies in dezelfde shellomgeving. Het combineren van verschillende `setup.bash`-bestanden kan verkeerde package- en librarypaden opleveren.
+Installeer Pixi volgens de officiële instructie en voer vanuit de repositoryroot
+uit:
 
-## 5. ROS 2 Jazzy installeren
+~~~bash
+pixi install --locked
+pixi run ros-info
+pixi run list-packages
+pixi run build
+pixi run test-result
+~~~
 
-De actuele officiële procedure staat op:
+De optie --locked voorkomt dat een machine ongemerkt andere dependencyversies
+kiest dan in pixi.lock staan.
 
-<https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html>
+### Eigen gebouwde ROS-packages uitvoeren
 
-### 5.1 Basisgereedschappen en Universe
+pixi run talker en pixi run listener komen rechtstreeks uit de Pixi-underlay.
+Een eigen package uit ros2_ws/src is pas vindbaar nadat de project-overlay is
+gebouwd en geactiveerd:
 
-```bash
-sudo apt update
-sudo apt install -y software-properties-common curl ca-certificates
-sudo add-apt-repository universe
-sudo apt update
-```
-
-### 5.2 Officiële ROS 2-packagebron toevoegen
-
-Gebruik het door ROS beheerde `ros2-apt-source`-pakket. Dit pakket beheert de repositoryconfiguratie en signing key.
-
-```bash
-export ROS_APT_SOURCE_VERSION=$(
-    curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
-    | grep -F '"tag_name"' \
-    | awk -F'"' '{print $4}'
-)
-```
-
-Controleer dat de variabele niet leeg is:
-
-```bash
-printf '%s\n' "$ROS_APT_SOURCE_VERSION"
-```
-
-Download en installeer daarna het pakket voor Ubuntu Noble:
-
-```bash
-curl -L -o /tmp/ros2-apt-source.deb \
-    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo "$VERSION_CODENAME")_all.deb"
-
-sudo apt install -y /tmp/ros2-apt-source.deb
-sudo apt update
-```
-
-Waarom deze route: losse repositoryregels en sleutels handmatig kopiëren verouderen gemakkelijker. Het officiële source-pakket maakt beheer en toekomstige wijzigingen explicieter.
-
-### 5.3 ROS 2 en ontwikkeltools installeren
-
-```bash
-sudo apt install -y ros-jazzy-desktop ros-dev-tools
-```
-
-Dit levert onder andere:
-
-- `ros2` command-line tools;
-- `rclcpp` en `rclpy`;
-- `ament_cmake` en `colcon`;
-- `rosdep`;
-- standaardmessages zoals `std_msgs`, `geometry_msgs`, `nav_msgs` en `sensor_msgs`;
-- RViz2;
-- demo-nodes en diagnostische tools.
-
-### 5.4 ROS-installatie controleren
-
-```bash
-source /opt/ros/jazzy/setup.bash
-ros2 --help
-ros2 doctor --report
-```
-
-## 6. Algemene C/C++- en Python-gereedschappen
-
-```bash
-sudo apt install -y \
-    build-essential \
-    cmake \
-    ninja-build \
-    git \
-    gdb \
-    ccache \
-    clang \
-    clang-format \
-    clang-tidy \
-    python3-venv \
-    python3-pytest
-```
-
-Rationale:
-
-| Pakket | Gebruik |
-|---|---|
-| `build-essential` | GCC, G++ en basisbuildtools |
-| `cmake` | CMake-configuratie voor ROS- en gedeelde C/C++-code |
-| `ninja-build` | Snelle optionele buildbackend |
-| `git` | Versiebeheer |
-| `gdb` | Native debugging |
-| `ccache` | Snellere herbouw na kleine wijzigingen |
-| `clang-format` | Reproduceerbare broncodeopmaak |
-| `clang-tidy` | Statische C/C++-controles |
-| `python3-venv` | Losse Python-tools buiten de ROS-build |
-| `python3-pytest` | Python unit tests |
-
-Gebruik voor ROS-tools de Ubuntu-systeem-Python. Activeer tijdens `colcon build` geen Conda-omgeving of willekeurige Python-venv. PlatformIO mag zijn eigen beheerde Python-omgeving blijven gebruiken.
-
-## 7. `rosdep` initialiseren
-
-Eenmalig per computer:
-
-```bash
-sudo rosdep init
-rosdep update
-```
-
-Als `rosdep init` meldt dat de configuratie al bestaat, is dat geen fout; voer dan alleen `rosdep update` uit.
-
-Waarom `rosdep`: afhankelijkheden horen in `package.xml` te staan. Een agent of ontwikkelaar kan vervolgens de vereiste Ubuntu/ROS-pakketten installeren zonder een handmatig bijgehouden, steeds langer wordende lijst.
-
-## 8. Zenoh-router installeren
-
-De actuele officiële procedure staat op:
-
-<https://zenoh.io/docs/getting-started/installation/>
-
-Zorg dat de keyringdirectory bestaat:
-
-```bash
-sudo install -d -m 0755 /etc/apt/keyrings
-```
-
-Voeg de officiële Eclipse Zenoh signing key toe:
-
-```bash
-curl -L https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key \
-    | sudo gpg --dearmor --yes \
-        --output /etc/apt/keyrings/zenoh-public-key.gpg
-```
-
-Voeg de repository precies eenmaal toe:
-
-```bash
-echo "deb [signed-by=/etc/apt/keyrings/zenoh-public-key.gpg] https://download.eclipse.org/zenoh/debian-repo/ /" \
-    | sudo tee /etc/apt/sources.list.d/zenoh.list > /dev/null
-
-sudo apt update
-sudo apt install -y zenoh
-```
-
-Controleer de installatie:
-
-```bash
-zenohd --version
-zenohd --help
-```
-
-Start de router tijdens ontwikkeling voorlopig handmatig:
-
-```bash
-zenohd
-```
-
-Maak nog geen systemd-service. Eerst moeten luisteradres, poort, discovery, routerconfiguratie, logging en security als projectconfiguratie zijn vastgelegd en getest.
-
-## 9. Shellomgevingen bewust scheiden
-
-Bron ROS 2 in iedere terminal waarin ROS-commando's of een ROS-build worden uitgevoerd:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-```
-
-Na het bouwen van de eigen workspace:
-
-```bash
-source /opt/ros/jazzy/setup.bash
+~~~bash
+pixi run build
+pixi shell
 source ros2_ws/install/setup.bash
-```
+ros2 run <package> <executable>
+~~~
 
-Zet deze regels aanvankelijk niet automatisch in `.bashrc`. Expliciet sourcen voorkomt dat ROS-variabelen onbedoeld invloed hebben op PlatformIO, andere CMake-projecten, Python-venvs of een later geïnstalleerde ROS-distributie.
+De volgorde is belangrijk:
 
-Een projectspecifiek helperscript mag later hetzelfde gecontroleerd doen, maar moet eerst controleren dat `ROS_DISTRO` leeg of `jazzy` is.
+1. pixi shell activeert de ROS 2-underlay;
+2. source ros2_ws/install/setup.bash legt onze project-overlay erbovenop.
 
-## 10. Aanbevolen repositorystructuur
+Source niet daarnaast ook /opt/ros/jazzy/setup.bash.
 
-```text
-robot_ros2_compat/
-├── DEVELOPMENT_ENVIRONMENT_SETUP.md
-├── MOTION_CORE_IMPLEMENTATION_PLAN.md
-├── ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md
-├── ros2_ws/
-│   └── src/
-│       ├── robot_interfaces/
-│       └── ros2_zenoh_gateway/
-├── firmware/
-│   └── esp32p4/
-├── protocol/
-│   ├── include/
-│   ├── src/
-│   └── tests/
-└── tools/
-```
+### Bewezen smoketest
 
-Verantwoordelijkheden:
-
-| Directory | Verantwoordelijkheid | Buildmethode |
-|---|---|---|
-| `ros2_ws/` | ROS 2-packages en gateway | `colcon`/ament |
-| `firmware/esp32p4/` | FreeRTOS- en hardwarecode | PlatformIO/ESP-IDF |
-| `protocol/` | Wire-format, codecs en hosttests | gewone CMake-library |
-| `tools/` | Test-, meet- en ontwikkelhulpmiddelen | per tool vastleggen |
-
-De gegenereerde ROS-directories horen niet in Git:
-
-```text
-ros2_ws/build/
-ros2_ws/install/
-ros2_ws/log/
-```
-
-## 11. Normale ontwikkelcyclus
-
-Vanaf de repositoryroot:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-cd ros2_ws
-```
-
-Installeer gedeclareerde packageafhankelijkheden:
-
-```bash
-rosdep install \
-    --from-paths src \
-    --ignore-src \
-    --rosdistro jazzy \
-    -y
-```
-
-Bouw de workspace:
-
-```bash
-colcon build \
-    --symlink-install \
-    --cmake-args \
-        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-```
-
-Activeer de overlay:
-
-```bash
-source install/setup.bash
-```
-
-Voer tests uit:
-
-```bash
-colcon test --event-handlers console_direct+
-colcon test-result --verbose
-```
-
-Waarom deze opties:
-
-- `--symlink-install` versnelt iteratie bij scripts, launchfiles en configuratie;
-- `RelWithDebInfo` combineert bruikbare optimalisatie met debuginformatie;
-- `CMAKE_EXPORT_COMPILE_COMMANDS` ondersteunt editors, `clangd` en statische analyse;
-- `colcon test-result --verbose` maakt falende tests zichtbaar voor ontwikkelaars en agents.
-
-## 12. ROS 2-smoketest na installatie
+Start vanuit de repositoryroot twee terminals.
 
 Terminal 1:
 
-```bash
-source /opt/ros/jazzy/setup.bash
-ros2 run demo_nodes_cpp talker
-```
+~~~bash
+pixi run talker
+~~~
 
 Terminal 2:
 
-```bash
-source /opt/ros/jazzy/setup.bash
-ros2 run demo_nodes_cpp listener
-```
+~~~bash
+pixi run listener
+~~~
 
-Aanvullende inspectie:
+De listener moet oplopende Hello World-berichten ontvangen. Deze test is op
+22 juli 2026 op de Ubuntu 24.04 x86-64-werk-pc geslaagd.
 
-```bash
-ros2 node list
-ros2 topic list
-ros2 topic echo /chatter
-```
+### Post-linkscripts
 
-Geslaagd wanneer:
+Pixi kan melden dat het librsvg-post-linkscript is overgeslagen. Dat blokkeert
+de ROS CLI, CycloneDDS of colcon niet. Alleen bij een concreet probleem met
+SVG-weergave in bijvoorbeeld RViz of rqt mag dit lokaal worden ingeschakeld:
 
-- talker en listener elkaar ontdekken;
-- `/chatter` zichtbaar is;
-- berichten zonder fouten worden ontvangen;
-- `ros2 doctor --report` geen blokkerende configuratiefout meldt.
+~~~bash
+pixi config set --local run-post-link-scripts insecure
+pixi reinstall
+~~~
 
-Deze test bewijst alleen de lokale ROS 2-installatie. Hij bewijst Zenoh, Ethernet of de ESP32 nog niet.
+Insecure betekent hier dat package-scripts code mogen uitvoeren. Schakel dit
+niet globaal of preventief in.
 
-## 13. Eerste projectmijlpaal na de installatie
+## 5. AGX Orin: kan Pixi daar de runtime beheren?
 
-Maak eerst een kleine ROS-only gatewaypackage met:
+**Ja, technisch is dat aannemelijk en daarom onze voorkeursroute.** De AGX Orin
+gebruikt een 64-bit ARM-userspace. Pixi kent dit als linux-aarch64. Het
+projectmanifest bevat:
 
-- `ament_cmake`;
-- `rclcpp`;
-- `std_msgs`;
-- `ament_cmake_gtest`;
-- één publisher/subscription-smoketest.
+~~~toml
+platforms = ["linux-64", "linux-aarch64"]
+~~~
 
-Daarna volgt de veilige verticale GPIO-slice:
+De locksolver heeft op 22 juli 2026 alle huidige dependencies, waaronder ROS 2
+Jazzy, CycloneDDS, colcon en de C/C++-toolchain, voor linux-aarch64 gevonden.
 
-```text
-ROS 2 Bool-command
-    -> C++ gateway
-    -> Zenoh
-    -> ESP32-P4
-    -> GPIO
-    -> Zenoh-status
-    -> C++ gateway
-    -> ROS 2 state-topic
-```
+### Waarom dit nog geen definitieve runtimegoedkeuring is
 
-Pas nadat dit pad en het buildsysteem reproduceerbaar werken, voegen we toe:
+Een opgeloste lockfile test geen echte Jetson. In het bijzonder:
 
-- `geometry_msgs/msg/TwistStamped`;
-- het eigen `MotionCommand`-wire-format;
-- odometrie met `nav_msgs/msg/Odometry`;
-- de watchdog en safety gate;
-- werkelijke motoroutput.
+- JetPack 6 gebruikt een Ubuntu 22.04-gebaseerd rootbestandssysteem;
+- ROS 2 Jazzy is door ROS zelf primair ondersteund op Ubuntu 24.04 voor amd64 en
+  arm64;
+- RoboStack levert ROS als geïsoleerde conda-packages en kan daardoor op andere
+  geschikte Linux-hosts werken, maar dat is niet hetzelfde als officiële Jazzy
+  Debian-pakketten op Ubuntu 24.04;
+- NVIDIA-kerneldrivers, CUDA, TensorRT, cuDNN en device libraries blijven aan de
+  geïnstalleerde JetPack-versie gekoppeld;
+- packages die rechtstreeks NVIDIA- of cameraspecifieke libraries gebruiken
+  kunnen aanvullende koppeling met de hostsysteemlibraries nodig hebben.
 
-## 14. Bewust nog niet installeren
+Installeer daarom niet zomaar Ubuntu 24.04 ROS-debs over een JetPack 6-systeem.
+Dat combineert twee distributieaannames en kan de ondersteunde NVIDIA-stack
+verstoren.
 
-Installeer in de eerste fase niet:
+### Verantwoordelijkheden op de robot
 
-- een realtime Linux-kernel;
-- ROS 2 vanuit broncode;
-- meerdere ROS 2-distributies;
-- `rmw_zenoh` als standaard-RMW;
-- Micro-ROS;
-- Gazebo;
-- Nav2;
-- MoveIt;
-- volledige Clearpath robotsoftware;
-- Docker als primaire ontwikkelomgeving;
-- willekeurige Zenoh C/C++-versies onder `/usr/local`;
-- een automatisch startende `zenohd`-service.
+| Onderdeel | Installatiemethode |
+|---|---|
+| Jetson Linux, kernel en NVIDIA-drivers | NVIDIA JetPack/BSP |
+| CUDA, TensorRT, cuDNN en VPI | bij de JetPack-release passende NVIDIA-pakketten |
+| ROS 2 Jazzy en gewone userspace-dependencies | Pixi/RoboStack |
+| Onze gateway en configuratie | deze repository en de colcon-overlay |
+| Procesbeheer | expliciete systemd-unit, pas na runtimeacceptatie |
 
-Deze onderdelen zijn niet verboden. Ze worden uitgesteld totdat een concrete requirement, falende test of meting aantoont dat ze nodig zijn. Dat houdt de eerste ontwikkelomgeving klein en verklaarbaar.
+Pixi vervangt dus niet JetPack. Het beheert het ROS-deel boven op de
+NVIDIA-hostinstallatie.
 
-## 15. Later optionele installaties
+## 6. Verplichte AGX Orin-acceptatietest
 
-### `rmw_zenoh`
+Leg eerst de basis vast:
 
-Alleen voor een afzonderlijke vergelijkingsproef:
-
-```bash
-sudo apt install ros-jazzy-rmw-zenoh-cpp
-```
-
-Zet zonder vastgesteld testplan niet permanent:
-
-```bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-```
-
-### Zenoh C en C++
-
-Pas installeren of als dependency opnemen nadat de ESP32-P4-versie is geïnventariseerd. De Zenoh C++ API is een C++17 headerbinding boven Zenoh C of Zenoh-Pico. De gekozen installatiemethode en exacte versies worden dan onderdeel van het buildontwerp.
-
-Officiële bron:
-
-<https://github.com/eclipse-zenoh/zenoh-cpp>
-
-### Simulatie en navigation
-
-Gazebo, Nav2 en de Clearpath-stack zijn pas nodig nadat de minimale gateway en motion core stabiel zijn. Dan worden hun versies en systeemafhankelijkheden als aparte mijlpaal toegevoegd, niet stilzwijgend aan de basisinstallatie.
-
-## 16. Installatiegegevens vastleggen
-
-Na een geslaagde installatie moeten minimaal deze gegevens in een issue, testlog of reproduceerbaar environment-report worden bewaard:
-
-```bash
-lsb_release -ds
+~~~bash
+cat /etc/nv_tegra_release
 uname -m
-ros2 --version 2>/dev/null || true
-apt-cache policy ros-jazzy-desktop ros-dev-tools
-zenohd --version
+lsb_release -ds
+pixi --version
+pixi install --locked
+pixi run ros-info
+~~~
+
+Daarna moeten op de echte AGX Orin aantoonbaar slagen:
+
+- installatie vanaf een schone checkout met de gecommitte pixi.lock;
+- talker/listener over loopback en over de bedoelde Ethernetinterface;
+- CycloneDDS-discovery met de uiteindelijke netwerkconfiguratie;
+- build en start van de ROS 2-Zenoh-gateway;
+- toegang tot benodigde CAN-, serial-, USB- en netwerkdevices;
+- toegang tot CUDA/TensorRT en camera- of sensordrivers als die nodig zijn;
+- start, stop, restart en logging onder systemd;
+- herstart na power cycle zonder interactieve shell;
+- latency-, jitter-, pakketverlies- en langdurige stabiliteitstest;
+- correcte veilige stop bij gateway-, router- en netwerkuitval.
+
+De testresultaten, JetPack/L4T-versie en hardwareconfiguratie worden in de repo
+opgeslagen. Alleen een succesvolle package-installatie is geen runtimebewijs.
+
+## 7. Fallback wanneer Pixi op Orin niet voldoet
+
+De fallback wordt pas gekozen nadat het concrete probleem is gemeten. Mogelijke
+routes zijn:
+
+1. JetPack op de host behouden en alleen de incompatibele hardwaredependency
+   buiten Pixi gebruiken;
+2. de gateway in een gecontroleerde container draaien met expliciete device-,
+   netwerk- en NVIDIA-runtimekoppeling;
+3. een native ROS-installatie gebruiken op een OS/JetPack-combinatie die de
+   gekozen ROS-distributie daadwerkelijk ondersteunt;
+4. de gateway naar een afzonderlijke Ubuntu 24.04-computer verplaatsen en de
+   Orin alleen voor NVIDIA-specifieke workloads gebruiken.
+
+Een native apt-runtime is dus niet automatisch eenvoudiger of beter. Op JetPack 6
+is vooral de combinatie Ubuntu 22.04 en ROS 2 Jazzy/Ubuntu 24.04 een punt dat
+expliciet opgelost moet worden.
+
+## 8. Zenoh en ESP32-P4
+
+De Linuxgateway gebruikt aan de ROS-zijde normale rclcpp-interfaces en aan de
+embedded zijde een expliciete Zenoh C/C++-client met eigen wire-messages.
+rmw_zenoh is niet de primaire route.
+
+De exacte versies van Zenoh, Zenoh C/C++ en Zenoh-Pico worden pas toegevoegd
+nadat de bestaande ESP32-P4-firmware is geïnventariseerd. Daarna moeten Linux en
+ESP32 dezelfde vastgelegde, onderling geteste versies gebruiken.
+
+De harde motorregelkring, watchdog, e-stopafhandeling en veilige stop blijven op
+de ESP32-P4. Geen keuze voor Pixi, ROS 2 of Jetson Linux verandert die
+safetygrens.
+
+## 9. Versies en bewijs vastleggen
+
+Voor iedere ontwikkel- of robotcomputer bewaren we minimaal:
+
+~~~bash
+uname -m
+lsb_release -ds
+pixi --version
+pixi list
+pixi run ros-info
 cmake --version
-gcc --version | head -n 1
-g++ --version | head -n 1
-python3 --version
-pio --version 2>/dev/null || true
-```
+git rev-parse HEAD
+~~~
 
-Omdat niet iedere `ros2` CLI-versie een bruikbare `--version` rapporteert, zijn `apt-cache policy` en de ROS packageversies de gezaghebbende installatiegegevens.
+Voor de AGX Orin komen daar JetPack/L4T, kernel, CUDA, TensorRT, cuDNN,
+netwerkconfiguratie, de hash van pixi.lock en de acceptatieresultaten bij.
 
-Voor Zenoh moet later bovendien expliciet worden vastgelegd:
+## 10. Definitie van gereed
 
-- Zenoh routerversie;
-- Zenoh C-versie;
-- Zenoh C++-versie;
-- Zenoh-Pico commit/tag;
-- ESP-IDF- en PlatformIO-platformversie.
+De ontwikkelomgeving is gereed wanneer:
 
-## 17. Definitie van gereed
+- pixi install --locked slaagt;
+- pixi run ros-info Jazzy en CycloneDDS toont;
+- talker/listener werkt;
+- een eigen minimaal package bouwt en na overlayactivatie start;
+- tests via de Pixi-taken slagen;
+- geen /opt/ros-omgeving met Pixi wordt gemengd.
 
-De ontwikkel-pc is gereed voor de eerste implementatie wanneer:
+De AGX Orin-runtime is pas gereed wanneer daarnaast alle tests uit sectie 6
+slagen. Tot die tijd is Pixi op ARM64 een onderbouwde voorkeursroute, geen
+productieclaim.
 
-- Ubuntu 24.04 en de juiste architectuur zijn bevestigd;
-- ROS 2 Jazzy uit officiële pakketten is geïnstalleerd;
-- `rosdep` is geïnitialiseerd;
-- de talker/listener-smoketest slaagt;
-- `zenohd` handmatig start en zijn versie rapporteert;
-- de normale C/C++-tools aanwezig zijn;
-- PlatformIO buiten de ROS-shell nog normaal werkt;
-- de repository een `ros2_ws/src` kan bevatten;
-- een leeg of minimaal ROS-package met `colcon` bouwt en test;
-- geen motoroutput aan een netwerkcommando is gekoppeld.
+## 11. Bronnen
 
-## 18. Bronnen
-
-- ROS 2 Jazzy op Ubuntu via Debian-pakketten: <https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html>
+- Pixi-installatie en architectuurdetectie: <https://pixi.sh/latest/installation/>
+- Pixi-platformconfiguratie: <https://pixi.sh/latest/workspace/multi_platform_configuration/>
+- RoboStack Jazzy-kanaal: <https://prefix.dev/channels/robostack-jazzy>
+- ROS 2 Jazzy binary platforms: <https://docs.ros.org/en/jazzy/Installation/Alternatives/Ubuntu-Install-Binary.html>
+- NVIDIA JetPack 6 release notes: <https://docs.nvidia.com/jetson/jetpack/6.0/release-notes/>
+- NVIDIA Jetson AGX Orin setup: <https://docs.nvidia.com/jetson/agx-orin-devkit/user-guide/setup_jetpack.html>
 - ROS 2-workspaces en underlay/overlay: <https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Creating-A-Workspace/Creating-A-Workspace.html>
-- Bouwen met `colcon`: <https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Colcon-Tutorial.html>
-- Afhankelijkheden beheren met `rosdep`: <https://docs.ros.org/en/jazzy/Tutorials/Intermediate/Rosdep.html>
-- Zenoh-installatie: <https://zenoh.io/docs/getting-started/installation/>
-- Zenoh C++ API: <https://github.com/eclipse-zenoh/zenoh-cpp>
-
-Controleer bij een nieuwe machine altijd eerst de officiële installatiepagina's. Repository-URL's, signing keys en pakketnamen kunnen na publicatie van dit document veranderen.
+- Gatewayarchitectuur: [ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md](ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md)
+- Motion core: [MOTION_CORE_IMPLEMENTATION_PLAN.md](MOTION_CORE_IMPLEMENTATION_PLAN.md)
