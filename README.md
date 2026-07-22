@@ -66,6 +66,75 @@ We bouwen het systeem in kleine verticale stappen. Iedere stap moet afzonderlijk
 9. **Gefaseerd uitbreiden**  
    Pas na een betrouwbare motion core volgen aanvullende telemetrie, verlichting, diagnose, IMU, GPS, LiDAR en verdere Jackal/Husky-compatibiliteit.
 
+## Ontwikkelomgeving met Pixi
+
+De ROS 2 Jazzy-omgeving wordt reproduceerbaar beheerd met Pixi en RoboStack. Een
+systeeminstallatie van ROS 2 in `/opt/ros/jazzy` is voor ontwikkeling niet nodig.
+
+Installeer eerst [Pixi](https://pixi.sh/latest/installation/) en voer daarna vanuit
+de repositoryroot uit. Verlaat eerst een actieve Conda-omgeving; dit voorkomt dat
+Conda- en Pixi-paden door elkaar lopen:
+
+```bash
+conda deactivate
+pixi install
+pixi run ros-info
+pixi run list-packages
+```
+
+De waarschuwing dat Pixi een `librsvg` post-linkscript heeft overgeslagen is niet
+blokkerend voor ROS 2. Alleen wanneer grafische ROS-programma's zoals RViz of rqt
+problemen met SVG-bestanden hebben, kun je packagescripts voor uitsluitend deze
+repository inschakelen en de omgeving opnieuw installeren:
+
+```bash
+pixi config set --local run-post-link-scripts insecure
+pixi reinstall
+```
+
+`insecure` betekent dat package-post-linkscripts code mogen uitvoeren. Schakel dit
+daarom niet globaal of zonder concrete noodzaak in.
+
+### Dagelijks gebruik
+
+`pixi install` maakt de omgeving aan of brengt haar in overeenstemming met
+`pixi.lock`. `pixi reinstall` installeert alle packages opnieuw en is bij normaal
+gebruik niet nodig. Met `pixi run <taak>` wordt één taak in de geïsoleerde omgeving
+uitgevoerd; `pixi shell` opent een interactieve shell in die omgeving.
+
+Beschikbare projecttaken:
+
+```bash
+pixi run ros-info       # ROS-installatie en configuratie tonen
+pixi run list-packages  # packages onder ros2_ws/src tonen
+pixi run build          # ROS-workspace bouwen
+pixi run test-result    # bouwen, testen en resultaten tonen
+```
+
+Voor de geverifieerde ROS 2-smoketest start je de talker en listener gelijktijdig
+in twee terminals vanuit de repositoryroot.
+
+Terminal 1:
+
+```bash
+pixi run talker
+```
+
+Terminal 2:
+
+```bash
+pixi run listener
+```
+
+De listener moet oplopende `Hello World`-berichten van de talker ontvangen. Deze
+smoketest is op 22 juli 2026 op Ubuntu 24.04 succesvol uitgevoerd.
+
+`pixi.lock` hoort na de eerste geslaagde `pixi install` in Git, zodat CI en andere
+ontwikkelaars exact dezelfde omgeving oplossen. Gebruik voor projectcommando's
+`pixi run ...` of open een shell met `pixi shell`; source daarnaast niet ook
+`/opt/ros/jazzy/setup.bash`, omdat gemengde ROS-omgevingen moeilijk te diagnosticeren
+library- en Python-padproblemen kunnen veroorzaken.
+
 ## Belangrijke architectuurkeuze
 
 De eerste implementatie gebruikt een expliciete ROS 2 ↔ Zenoh-gateway op de Linux-computer. De ESP32-P4 gebruikt Zenoh-Pico en eenvoudige embedded berichten; hij hoeft geen volledige ROS 2-node te zijn.
