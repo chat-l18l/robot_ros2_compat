@@ -304,7 +304,7 @@ De protocolimplementatie is C11 en wordt door hosttests en ESP-IDF uit dezelfde 
 
 ### G0 — Bestaande code en versies inventariseren
 
-- [ ] Leg ROS 2-distributie en gekozen RMW vast.
+- [x] Leg ROS 2-distributie en gekozen RMW vast.
 - [ ] Leg ESP-IDF-, FreeRTOS-, compiler- en Zenoh-Pico-versies vast.
 - [ ] Vind herbruikbare Ethernet-, Zenoh-, GPIO- en loggingcode in de bestaande robot.
 - [ ] Leg pin, actieve polariteit en mogelijke hardware-readback vast.
@@ -348,7 +348,7 @@ Exitcriterium: commandline-hosttest schakelt de veilige GPIO 100 keer op 10 Hz c
 
 ### G4 — ROS 2-gateway verticale slice
 
-- [ ] Maak package `ros2_zenoh_gateway`.
+- [x] Maak package `ros2_zenoh_gateway`.
 - [ ] Subscribe op `/test/gpio/command` als `std_msgs/msg/Bool`.
 - [ ] Publiceer `/test/gpio/state` als `std_msgs/msg/Bool`.
 - [ ] Implementeer sequence-toekenning en begrensde pending-tabel.

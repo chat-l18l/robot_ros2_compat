@@ -388,7 +388,7 @@ diagnostic_msgs/DiagnosticStatus[] status
 
 Owner: `unassigned` · Issue/PR: `TBD`
 
-- [ ] Create the ROS 2 package layout and dependency manifest.
+- [x] Create the ROS 2 package layout and dependency manifest.
 - [ ] Pin/test the intended `clearpath_msgs` Jazzy version.
 - [ ] Add configurable namespace and frame prefix.
 - [ ] Add a launch file for `j100` and a separate `a300_extension` profile.
