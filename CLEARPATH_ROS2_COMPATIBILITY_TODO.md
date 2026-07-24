@@ -2,7 +2,7 @@
 
 > Status: initial implementation specification  
 > Target: ROS 2 Jazzy  
-> Updated: 2026-07-21  
+> Updated: 2026-07-24
 > Scope: a four-wheel skid-steer robot that should present a Clearpath-compatible ROS 2 API
 
 ## 1. Goal
@@ -47,6 +47,11 @@ Agents must:
 | Sensor Convention | Follow Clearpath topic naming for configured lidar, camera, IMU, INS, and GNSS devices | Optional |
 
 The initial release is complete when all P0 tasks and tests pass. Do not claim full Jackal compatibility until P1 also passes.
+
+Network compatibility is specified separately in
+[`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md). It uses the same
+`192.168.131.0/24` subnet and functional address blocks as Clearpath; passing the
+ROS interface tests alone does not prove network compatibility.
 
 ## 4. Architecture to implement
 
@@ -485,6 +490,22 @@ Owner: `unassigned` · Issue/PR: `TBD`
 - [ ] Supply controller, geometry, limits, CAN IDs, thermal limits, and encoder parameters in explicit YAML.
 - [ ] Add example namespaces for single- and multi-robot use.
 
+### WP-09 — Network identity and payload integration
+
+Owner: `unassigned` · Issue/PR: `TBD`
+
+- [ ] Configure the primary robot computer as `192.168.131.1/24`.
+- [ ] Create the Clearpath-style `br0` bridge from the inventoried internal
+      Ethernet ports.
+- [ ] Configure the ESP32-P4 MCU as `192.168.131.2/24`.
+- [ ] Assign cameras, lidars, GNSS, radios, and payload computers from their
+      Clearpath-compatible functional ranges.
+- [ ] Create the version-controlled device register for the first vehicle.
+- [ ] Prove that DHCP excludes static infrastructure addresses.
+- [ ] Prove that a network interruption causes a safe local timeout and that
+      reconnection cannot create a motion pulse.
+- [ ] Keep multiple robots with overlapping internal subnets Layer-2 isolated.
+
 ## 10. Test checklist
 
 ### 10.1 Static and interface contract tests
@@ -535,6 +556,8 @@ Owner: `unassigned` · Issue/PR: `TBD`
 - [ ] Record a rosbag containing commands, feedback, odometry, TF, power, diagnostics, and e-stop.
 - [ ] Run an automated bag validator for topic/type presence, frequency, timestamps, units, and frame IDs.
 - [ ] Store the validation report as a CI artifact and link it here.
+- [ ] Run the network acceptance checklist from `ROBOT_NETWORK_SETUP.md` for the
+      tested vehicle configuration.
 
 ## 11. Useful inspection commands
 
@@ -565,6 +588,8 @@ ros2 run tf2_tools view_frames
 - [ ] Decide whether four independent motor feedback messages or a compatibility aggregator will represent the J100 two-side abstraction.
 - [ ] Decide e-brake/reset semantics and the separate fail-safe parking-brake design.
 - [ ] Define minimum publication rates and maximum allowed telemetry age per topic.
+- [ ] Record the exact first-vehicle network inventory, NTP source, uplink
+      policy, and Zenoh endpoint.
 
 ## 13. References
 
@@ -575,11 +600,15 @@ Primary sources:
 - [Clearpath ROS 2 MCU API (Jazzy)](https://docs.clearpathrobotics.com/docs/ros/api/mcu_api/)
 - [Clearpath ROS 2 Sensors API (Jazzy)](https://docs.clearpathrobotics.com/docs/ros/api/sensors_api/)
 - [Clearpath lighting API](https://docs.clearpathrobotics.com/docs/ros/api/lighting/)
+- [Clearpath reserved IP addresses (ROS 2 Jazzy)](https://docs.clearpathrobotics.com/docs/ros/networking/network_ip_addresses/)
 - [`clearpathrobotics/clearpath_msgs`, `jazzy` branch](https://github.com/clearpathrobotics/clearpath_msgs/tree/jazzy)
 - [`Drive.msg`](https://github.com/clearpathrobotics/clearpath_msgs/blob/jazzy/clearpath_platform_msgs/msg/Drive.msg)
 - [`DriveFeedback.msg`](https://github.com/clearpathrobotics/clearpath_msgs/blob/jazzy/clearpath_platform_msgs/msg/DriveFeedback.msg)
 - [`LynxFeedback.msg`](https://github.com/clearpathrobotics/clearpath_msgs/blob/jazzy/clearpath_motor_msgs/msg/LynxFeedback.msg)
 - [`LynxStatus.msg`](https://github.com/clearpathrobotics/clearpath_msgs/blob/jazzy/clearpath_motor_msgs/msg/LynxStatus.msg)
 - [ROS 2 Jazzy standard message definitions](https://github.com/ros2/common_interfaces/tree/jazzy)
+- [`PROJECT_VISION_AND_ARCHITECTURE.md`](PROJECT_VISION_AND_ARCHITECTURE.md)
+- [`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md)
 
-Source check date: 2026-07-21. Re-run the contract tests whenever the pinned Clearpath or ROS 2 dependency changes.
+ROS API source check date: 2026-07-21. Network source check date: 2026-07-24.
+Re-run the contract tests whenever the pinned Clearpath or ROS 2 dependency changes.

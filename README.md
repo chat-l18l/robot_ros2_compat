@@ -13,6 +13,7 @@ De beoogde architectuur combineert onder andere:
 - een C++ gateway tussen ROS 2 en Zenoh;
 - Zenoh voor de communicatie tussen Linux en de embedded motion core;
 - een ESP32-P4 met PlatformIO, ESP-IDF, FreeRTOS en Zenoh-Pico;
+- een Clearpath-compatibel intern netwerk op `192.168.131.0/24`;
 - expliciete, versieerbare wire-protocollen;
 - lokale motorregeling, watchdogs en veiligheidslogica op de ESP32-P4;
 - C, C++ en Python voor implementatie, tests en ontwikkelgereedschappen.
@@ -152,10 +153,17 @@ ROS 2 applicaties
 
 De gateway verwerkt uitsluitend vooraf vastgelegde, whitelisted routes. De realtime motorregelkring, watchdog, e-stopafhandeling en veilige stop blijven lokaal op de ESP32-P4.
 
+Dezelfde ESP32-P4-controller kan daardoor ook zonder ROS 2 worden gebruikt. Een
+klein Python-project kan via het gedocumenteerde Zenoh-contract rijden, status
+lezen of eenvoudige accessoires bedienen, terwijl de volledige robotstack via de
+Linuxgateway de Jackal/Husky-compatibele ROS 2-interface aanbiedt.
+
 ## Documentatie
 
 De belangrijkste plannen zijn:
 
+- [`PROJECT_VISION_AND_ARCHITECTURE.md`](PROJECT_VISION_AND_ARCHITECTURE.md) — aanleiding, compatibiliteitsgrens en de volledige en lichtgewicht gebruiksprofielen;
+- [`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md) — Clearpath-compatibel intern subnet, vaste IP-adressen, configuratie en acceptatietests;
 - [`DEVELOPMENT_ENVIRONMENT_SETUP.md`](DEVELOPMENT_ENVIRONMENT_SETUP.md) — installatie en rationale voor de ontwikkel-pc;
 - [`CPP_STYLE_GUIDE.md`](CPP_STYLE_GUIDE.md) — afspraken over leesbaarheid, ownership, contracten en abstracties;
 - [`ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md`](ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md) — gatewayarchitectuur, protocol en eerste end-to-endtest;
