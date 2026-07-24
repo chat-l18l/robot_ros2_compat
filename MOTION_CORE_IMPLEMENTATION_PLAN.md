@@ -56,6 +56,9 @@ The implementation is split into two layers:
    - Reads encoders and calculates raw odometry.
 
 The exact ROS 2-to-Zenoh mapping is the next design step and must be approved before handler implementation.
+The ESP32-P4 uses the fixed MCU address and explicit router endpoint defined in
+[`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md); discovery or external time
+synchronization is never part of the motion safety loop.
 
 ## 4. Required behavior
 
@@ -313,6 +316,8 @@ The first slice is complete when:
 
 Only after this slice passes do we enable skid-steer calculation and connect the existing motor output.
 
-## 12. Related document
+## 12. Related documents
 
-See [`CLEARPATH_ROS2_COMPATIBILITY_TODO.md`](CLEARPATH_ROS2_COMPATIBILITY_TODO.md) for the complete Jackal/Husky ROS 2 compatibility backlog and message inventory.
+- [`PROJECT_VISION_AND_ARCHITECTURE.md`](PROJECT_VISION_AND_ARCHITECTURE.md) defines why the motion core remains usable with and without ROS 2.
+- [`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md) defines the MCU address, router location, and network-failure acceptance tests.
+- [`CLEARPATH_ROS2_COMPATIBILITY_TODO.md`](CLEARPATH_ROS2_COMPATIBILITY_TODO.md) contains the complete Jackal/Husky ROS 2 compatibility backlog and message inventory.

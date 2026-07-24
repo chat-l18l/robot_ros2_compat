@@ -4,7 +4,7 @@
 > Doelplatformen: Linux met ROS 2 Jazzy en ESP32-P4 met ESP-IDF/FreeRTOS  
 > Transport: Ethernet en Zenoh/Zenoh-Pico  
 > Taal: C++17 op Linux, C11 op de ESP32-P4  
-> Bijgewerkt: 2026-07-21
+> Bijgewerkt: 2026-07-24
 
 ## 1. Doel
 
@@ -36,6 +36,7 @@ Na deze test gebruiken we hetzelfde framework voor `/cmd_vel`, geaccepteerde mot
 | ADR-006 | De eerste verticale slice is een GPIO-command/status-roundtrip. | Bewijst het volledige pad zonder bewegingsrisico. |
 | ADR-007 | Serialisatie gebeurt veld voor veld met expliciete bytevolgorde; C-structs worden niet rechtstreeks verzonden. | Voorkomt padding-, alignment-, compiler- en architectuurafhankelijkheid. |
 | ADR-008 | Optimalisatie volgt pas na latency- en jittermetingen. | Een componentcontainer, multithreaded executor of directe ROS-wire-interoperabiliteit wordt alleen toegevoegd voor een gemeten probleem. |
+| ADR-009 | Het interne robotnetwerk volgt Clearpaths `192.168.131.0/24`-indeling; de primaire computer is `.1` en de ESP32-P4 is `.2`. | Houdt computer-, MCU- en payloadintegratie herkenbaar voor Jackal/Husky-gebruikers en voorkomt projectspecifieke adreskeuzes. |
 
 Deze besluiten mogen alleen worden gewijzigd met een nieuw ADR, een reden, meetgegevens en bijgewerkte tests.
 
@@ -84,6 +85,8 @@ flowchart LR
 
 ### Netwerktopologie voor versie 1
 
+- De primaire voertuigcomputer gebruikt `192.168.131.1/24`.
+- De ESP32-P4 gebruikt `192.168.131.2/24`.
 - ESP32-P4 draait in Zenoh `client` mode.
 - De firmware verbindt met een expliciet geconfigureerd TCP-endpoint van `zenohd`.
 - Multicast discovery is niet nodig voor normale werking.
@@ -91,6 +94,9 @@ flowchart LR
 - Adressen, robot-ID en router-endpoint zijn configuratie en worden niet hard gecodeerd in handlers.
 
 De eerste tests gebruiken TCP over bedraad Ethernet. Andere transports worden pas toegevoegd als daar een concrete eis voor bestaat.
+De volledige adresindeling, NIC-configuratie, multi-robotisolatie en
+netwerkacceptatietest staan in
+[`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md).
 
 ## 5. Realtime- en latencybeleid
 
@@ -521,5 +527,7 @@ De eerste verticale slice is pas gereed wanneer:
 - [Eclipse Zenoh deployment](https://zenoh.io/docs/getting-started/deployment/) — client-, peer- en routertopologie.
 - [Eclipse Zenoh-Pico](https://github.com/eclipse-zenoh/zenoh-pico) — pure-C embedded implementatie en ESP-IDF/FreeRTOS-ondersteuning.
 - [Zenoh ROS 2 DDS bridge](https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds) — alternatieve DDS-bridge; niet verwarren met `rmw_zenoh` of onze applicatiegateway.
+- [`PROJECT_VISION_AND_ARCHITECTURE.md`](PROJECT_VISION_AND_ARCHITECTURE.md) — projectdoel, platformgrenzen en de ROS 2- en lichtgewicht gebruiksprofielen.
+- [`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md) — normatief intern subnet, vaste adressen en netwerkacceptatie.
 - [`MOTION_CORE_IMPLEMENTATION_PLAN.md`](MOTION_CORE_IMPLEMENTATION_PLAN.md) — veilige motion core, watchdog, skid-steer en odometrie.
 - [`CLEARPATH_ROS2_COMPATIBILITY_TODO.md`](CLEARPATH_ROS2_COMPATIBILITY_TODO.md) — volledige Jackal/Husky-interfacebacklog.

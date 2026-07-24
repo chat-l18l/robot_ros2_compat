@@ -5,7 +5,7 @@
 > Ontwikkel-pc: Ubuntu 24.04, x86-64 (linux-64)
 > Beoogde robotcomputer: NVIDIA Jetson AGX Orin, ARM64 (linux-aarch64)
 > Embedded target: ESP32-P4, ESP-IDF/FreeRTOS en Zenoh-Pico
-> Bijgewerkt: 2026-07-22
+> Bijgewerkt: 2026-07-24
 
 ## 1. Kort antwoord
 
@@ -53,7 +53,8 @@ ESP32-P4-firmware                         afzonderlijke toolchain/runtime
 ~~~
 
 De host blijft verantwoordelijk voor zaken die een geïsoleerde packageomgeving
-niet kan leveren: de Linux-kernel, Ethernetinterfaces, USB/CAN/GPIO-devices,
+niet kan leveren: de Linux-kernel, Ethernetinterfaces en hun vaste adressen,
+USB/CAN/GPIO-devices,
 NVIDIA-kerneldrivers en de bij JetPack horende CUDA/TensorRT-installatie.
 
 ### Wat is niet meer van toepassing?
@@ -205,6 +206,7 @@ verstoren.
 | ROS 2 Jazzy en gewone userspace-dependencies | Pixi/RoboStack |
 | Onze gateway en configuratie | deze repository en de colcon-overlay |
 | Procesbeheer | expliciete systemd-unit, pas na runtimeacceptatie |
+| Intern robotnetwerk | host-Netplan/systemd-networkd volgens [`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md) |
 
 Pixi vervangt dus niet JetPack. Het beheert het ROS-deel boven op de
 NVIDIA-hostinstallatie.
@@ -285,7 +287,8 @@ git rev-parse HEAD
 ~~~
 
 Voor de AGX Orin komen daar JetPack/L4T, kernel, CUDA, TensorRT, cuDNN,
-netwerkconfiguratie, de hash van pixi.lock en de acceptatieresultaten bij.
+netwerkconfiguratie inclusief het apparaatregister, de hash van pixi.lock en de
+acceptatieresultaten bij.
 
 ## 10. Definitie van gereed
 
@@ -313,3 +316,5 @@ productieclaim.
 - ROS 2-workspaces en underlay/overlay: <https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Creating-A-Workspace/Creating-A-Workspace.html>
 - Gatewayarchitectuur: [ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md](ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md)
 - Motion core: [MOTION_CORE_IMPLEMENTATION_PLAN.md](MOTION_CORE_IMPLEMENTATION_PLAN.md)
+- Projectvisie: [PROJECT_VISION_AND_ARCHITECTURE.md](PROJECT_VISION_AND_ARCHITECTURE.md)
+- Robotnetwerk en IP-plan: [ROBOT_NETWORK_SETUP.md](ROBOT_NETWORK_SETUP.md)
