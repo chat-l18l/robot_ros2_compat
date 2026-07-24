@@ -495,8 +495,10 @@ Owner: `unassigned` · Issue/PR: `TBD`
 Owner: `unassigned` · Issue/PR: `TBD`
 
 - [ ] Configure the primary robot computer as `192.168.131.1/24`.
-- [ ] Create the Clearpath-style `br0` bridge from the inventoried internal
-      Ethernet ports.
+- [ ] Decide from the physical topology whether `.1/24` belongs directly on one
+      internal NIC or on a Clearpath-style `br0`; document the rationale.
+- [ ] If `br0` is selected, include only the inventoried internal Ethernet
+      ports and test bridge-failure behaviour.
 - [ ] Configure the ESP32-P4 MCU as `192.168.131.2/24`.
 - [ ] Assign cameras, lidars, GNSS, radios, and payload computers from their
       Clearpath-compatible functional ranges.

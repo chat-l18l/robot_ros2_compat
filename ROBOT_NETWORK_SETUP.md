@@ -35,7 +35,7 @@ De achterliggende project- en architectuurkeuzes staan in
 | Statische infrastructuur en payloads | `192.168.131.1` t/m `.99`, volgens de functietabel |
 | DHCP-/tijdelijke clients | `192.168.131.100` t/m `.254` |
 | Primair Zenoh-routeradres | `192.168.131.1` |
-| Primaire Linux-interface | `br0`, als bridge over de interne Ethernetpoorten |
+| Primaire Linux-interface | Nog te kiezen: één fysieke NIC of `br0`; `.1/24` wordt precies eenmaal toegekend |
 
 Aanvullende regels:
 
@@ -135,8 +135,8 @@ opnieuw.
 ```mermaid
 flowchart TD
     U["Uplink, wifi of servicelaptop"] -->|"afzonderlijke interface; routing alleen bewust"| PC["Primaire robotcomputer"]
-    PC <--> BR["br0\n192.168.131.1/24"]
-    BR <--> SW["Interne Ethernetpoorten/switch\n192.168.131.0/24"]
+    PC <--> IF["Interne interface\nfysieke NIC of optionele br0\n192.168.131.1/24"]
+    IF <--> SW["Fysieke switch of interne Ethernetpoorten\n192.168.131.0/24"]
     SW <--> MCU["ESP32-P4\n192.168.131.2"]
     SW <--> CAM["Camera's\n.10-.19"]
     SW <--> LIDAR["Lidars\n.20-.29"]
@@ -144,9 +144,17 @@ flowchart TD
     SW <--> RADIO["Radio/netwerkhardware\n.50-.69"]
 ```
 
-Clearpath brengt de interne Ethernetpoorten standaard samen in Linux-bridge
-`br0` en kent `192.168.131.1/24` aan die bridge toe. Dit project volgt die
-opzet. Neem alleen poorten op die werkelijk bij het interne robotnetwerk horen.
+Clearpath brengt de Ethernetpoorten van zijn robotcomputer standaard samen in
+Linux-bridge `br0` en kent `192.168.131.1/24` aan die bridge toe. Voor ons
+project is die bridge geen compatibiliteitsvereiste. Als één fysieke
+hostinterface op een fysieke switch wordt aangesloten, kan `.1/24` rechtstreeks
+op die interface staan.
+
+We beslissen pas na de definitieve computer- en switchkeuze of meerdere
+computerpoorten werkelijk één Layer-2-netwerk moeten vormen. De uitleg en
+keuzecriteria staan in
+[`LINUX_BRIDGE_BR0_BACKGROUNDER.md`](LINUX_BRIDGE_BR0_BACKGROUNDER.md).
+
 Een wifi-, internet- of service-uplink blijft bij voorkeur een afzonderlijke
 interface. Routing, NAT, firewalling en remote access zijn bewuste
 deploymentkeuzes en mogen het embedded commandonetwerk niet onbedoeld naar een
@@ -165,11 +173,36 @@ lossen applicatienaamconflicten op, maar geen overlappende IP-routes.
 
 ## 6. Configuratieprocedure
 
-### 6.1 Primaire robotcomputer
+### 6.1 Primaire robotcomputer: directe NIC of bridge
 
-Maak op een robotcomputer met meerdere interne Ethernetpoorten de bridge `br0`
-en configureer die statisch als `192.168.131.1/24`, zonder default gateway. Een
-illustratief Netplan-fragment voor twee poorten is:
+De fysieke topologie bepaalt de hostconfiguratie. Leg de gekozen interfaces,
+kabels en switchpoorten eerst vast in het apparaatregister. Ken
+`192.168.131.1/24` daarna precies eenmaal toe: óf aan de fysieke interne
+interface, óf aan `br0`.
+
+#### Optie A — één hostinterface en een fysieke switch
+
+Dit is de voorlopige voorkeursopzet wanneer alle robotapparaten op een fysieke
+switch worden aangesloten. Er is dan geen `br0` nodig:
+
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp1s0:
+      addresses:
+        - 192.168.131.1/24
+      dhcp4: false
+      dhcp6: false
+      optional: true
+```
+
+#### Optie B — meerdere hostpoorten als één interne switch
+
+Gebruik `br0` alleen als meerdere fysieke of virtuele hostinterfaces werkelijk
+één Layer-2-netwerk moeten vormen. Een illustratief Netplan-fragment voor twee
+interne poorten is:
 
 ```yaml
 network:
@@ -194,19 +227,17 @@ network:
       optional: true
 ```
 
-Dit fragment is een sjabloon, geen direct inzetbaar bestand. Vervang `enp1s0` en
-`enp2s0` door de exact geïnventariseerde interne interfaces of gebruik exacte
-MAC-adresmatches. Voeg geen uplink of poort naar een tweede robot aan `br0` toe.
-Op een computer met één interne poort blijft `br0` gewenst voor dezelfde
-Clearpath-achtige hostindeling, ook al is bridging technisch niet noodzakelijk.
-Leg een eventuele default route uitsluitend op de uplinkinterface.
+Beide fragmenten zijn sjablonen, geen direct inzetbare bestanden. Vervang de
+interfacenamen door de exact geïnventariseerde interfaces of gebruik exacte
+MAC-adresmatches. Voeg bij optie B geen uplink of poort naar een tweede robot
+aan `br0` toe. Leg een eventuele default route uitsluitend op de
+uplinkinterface.
 
 De Clearpath-referentieconfiguratie zet daarnaast DHCPv4 op `br0` aan, zodat de
 bridge naast zijn vaste `.1`-adres ook een adres en route van een externe wired
 DHCP-bron kan ontvangen. Onze geïsoleerde baseline zet dit bewust uit. Schakel
 het alleen in wanneer een wired uplink op dezelfde bridge vereist is en
-overlappende routes, firewalling en de interne DHCP-situatie zijn getest. De
-compatibiliteitsinvariant blijft dat `br0` altijd `192.168.131.1/24` heeft.
+overlappende routes, firewalling en de interne DHCP-situatie zijn getest.
 
 Valideer een wijziging lokaal voordat een voertuig onbeheerd wordt herstart:
 
@@ -214,7 +245,8 @@ Valideer een wijziging lokaal voordat een voertuig onbeheerd wordt herstart:
 sudo netplan --debug generate
 sudo netplan try
 sudo netplan apply
-ip address show br0
+ip -brief address
+ip route
 ```
 
 `netplan try` kan een mislukte remote wijziging terugdraaien, maar pas
@@ -332,8 +364,10 @@ Voer dit uit na iedere nieuwe computer, controller of Ethernet-payload:
 - [ ] alle vaste apparaten zitten in het juiste functieblok;
 - [ ] geen dubbele adressen volgens register, switch en actieve meting;
 - [ ] `.1-.99` komt niet uit de dynamische DHCP-pool;
-- [ ] `br0` bevat uitsluitend de vastgelegde interne poorten en heeft
-      `192.168.131.1/24`;
+- [ ] gekozen hosttopologie (`directe NIC` of `br0`) en de reden zijn vastgelegd;
+- [ ] `192.168.131.1/24` staat op precies één hostinterface;
+- [ ] bij gebruik van `br0` bevat de bridge uitsluitend de vastgelegde interne
+      poorten;
 - [ ] primaire computer bereikt de ESP32-P4 en iedere geïnstalleerde payload;
 - [ ] ESP32-P4 bereikt het expliciete Zenoh-routerendpoint zonder multicast;
 - [ ] uplinkverlies laat het interne robotnetwerk functioneren;
@@ -352,6 +386,7 @@ De runtimeacceptatie van de primaire computer staat in
 
 - [Clearpath Reserved IP Addresses, ROS 2 Jazzy](https://docs.clearpathrobotics.com/docs/ros/networking/network_ip_addresses/)
 - [Clearpath Linux Network Configuration, ROS 2 Jazzy](https://docs.clearpathrobotics.com/docs/ros/networking/computer_setup/)
+- [`LINUX_BRIDGE_BR0_BACKGROUNDER.md`](LINUX_BRIDGE_BR0_BACKGROUNDER.md)
 - [`PROJECT_VISION_AND_ARCHITECTURE.md`](PROJECT_VISION_AND_ARCHITECTURE.md)
 - [`CLEARPATH_ROS2_COMPATIBILITY_TODO.md`](CLEARPATH_ROS2_COMPATIBILITY_TODO.md)
 
