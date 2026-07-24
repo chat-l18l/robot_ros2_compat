@@ -164,6 +164,7 @@ De belangrijkste plannen zijn:
 
 - [`PROJECT_VISION_AND_ARCHITECTURE.md`](PROJECT_VISION_AND_ARCHITECTURE.md) — aanleiding, compatibiliteitsgrens en de volledige en lichtgewicht gebruiksprofielen;
 - [`ROBOT_NETWORK_SETUP.md`](ROBOT_NETWORK_SETUP.md) — Clearpath-compatibel intern subnet, vaste IP-adressen, configuratie en acceptatietests;
+- [`LINUX_BRIDGE_BR0_BACKGROUNDER.md`](LINUX_BRIDGE_BR0_BACKGROUNDER.md) — studentenuitleg over Linux-bridging en wanneer `br0` wel of niet nodig is;
 - [`DEVELOPMENT_ENVIRONMENT_SETUP.md`](DEVELOPMENT_ENVIRONMENT_SETUP.md) — installatie en rationale voor de ontwikkel-pc;
 - [`CPP_STYLE_GUIDE.md`](CPP_STYLE_GUIDE.md) — afspraken over leesbaarheid, ownership, contracten en abstracties;
 - [`ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md`](ROS2_ZENOH_GATEWAY_ARCHITECTURE_PLAN.md) — gatewayarchitectuur, protocol en eerste end-to-endtest;
